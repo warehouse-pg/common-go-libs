@@ -11,9 +11,9 @@ import (
 	"io"
 	"os"
 
-	"github.com/greenplum-db/gp-common-go-libs/gplog"
-	"github.com/greenplum-db/gp-common-go-libs/operating"
 	"github.com/pkg/errors"
+	"github.com/warehouse-pg/gp-common-go-libs/gplog"
+	"github.com/warehouse-pg/gp-common-go-libs/operating"
 )
 
 /*

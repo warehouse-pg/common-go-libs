@@ -13,8 +13,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/greenplum-db/gp-common-go-libs/operating"
 	"github.com/pkg/errors"
+	"github.com/warehouse-pg/gp-common-go-libs/operating"
 )
 
 var (
