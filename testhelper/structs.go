@@ -6,10 +6,11 @@ package testhelper
 
 import (
 	"context"
+	"time"
+
 	"github.com/greenplum-db/gp-common-go-libs/cluster"
 	"github.com/greenplum-db/gp-common-go-libs/gplog"
 	"github.com/jmoiron/sqlx"
-	"time"
 )
 
 type TestDriver struct {
