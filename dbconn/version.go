@@ -1,6 +1,7 @@
 package dbconn
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 
@@ -11,6 +12,9 @@ type GPDBVersion struct {
 	VersionString string
 	SemVer        semver.Version
 }
+
+// versionNumPattern finds the first X.Y.Z token in a "SELECT version()" banner.
+var versionNumPattern = regexp.MustCompile(`\d+\.\d+\.\d+`)
 
 /*
  * This constructor is intended as a convenience function for testing and
@@ -35,13 +39,48 @@ func InitializeVersion(dbconn *DBConn) (dbversion GPDBVersion, err error) {
 	if err != nil {
 		return
 	}
-	versionStart := strings.Index(dbversion.VersionString, "(Greenplum Database ") + len("(Greenplum Database ")
-	versionEnd := strings.Index(dbversion.VersionString, ")")
-	dbversion.VersionString = dbversion.VersionString[versionStart:versionEnd]
+	dbversion.VersionString, dbversion.SemVer, err = ParseGPVersion(dbversion.VersionString)
+	return
+}
 
-	pattern := regexp.MustCompile(`\d+\.\d+\.\d+`)
-	threeDigitVersion := pattern.FindStringSubmatch(dbversion.VersionString)[0]
-	dbversion.SemVer, err = semver.Make(threeDigitVersion)
+// ParseGPVersion extracts the Greenplum/WarehousePG version out of a raw
+// "SELECT version()" banner. Two banner shapes are in the wild:
+//
+//   - GP6/GP7: "... (Greenplum Database 6.28.9 build ...) ..."      - version sits
+//     right after the marker, inside the same parens.
+//   - WHPG19+: "... (Greenplum Database) 19.0.0 build dev ... WarehousePG" - the
+//     backend moved the closing paren to right after "Database", ahead of the
+//     version number, so the version now sits *outside* those parens.
+//
+// Rather than assume where the closing paren falls, this only anchors on the
+// "(Greenplum Database" marker and takes the first X.Y.Z token after it, which
+// matches both shapes without special-casing WHPG19. If the marker or a version
+// number can't be found, an error is returned instead of panicking.
+//
+// It returns the matched version number plus whatever trailing text follows it
+// in the banner (e.g. "6.28.9 build ...", "19.0.0 build dev ... WarehousePG"),
+// not just the bare semver, because callers such as gpbackup's own backup
+// history/config persist this string verbatim and later re-derive the major
+// version from it (e.g. via strings.Split(v, ".")[0]) - keeping any leading
+// compiler-version noise (e.g. gcc's "11.5.0") out of the returned string, as
+// the original slicing logic did for GP6/GP7, avoids that code silently
+// mis-deriving the major version on WHPG19.
+func ParseGPVersion(versionString string) (versionAndTrailer string, version semver.Version, err error) {
+	const marker = "(Greenplum Database"
+	_, rest, found := strings.Cut(versionString, marker)
+	if !found {
+		err = fmt.Errorf("could not find a Greenplum Database version marker in version string: %q", versionString)
+		return
+	}
+
+	loc := versionNumPattern.FindStringIndex(rest)
+	if loc == nil {
+		err = fmt.Errorf("could not find a X.Y.Z version number in version string: %q", versionString)
+		return
+	}
+
+	versionAndTrailer = strings.TrimSpace(rest[loc[0]:])
+	version, err = semver.Make(rest[loc[0]:loc[1]])
 	return
 }
 
