@@ -164,5 +164,22 @@ var _ = Describe("dbconn/version tests", func() {
 			_, _, err := dbconn.ParseGPVersion("(Greenplum Database) no version number here")
 			Expect(err).To(HaveOccurred())
 		})
+		// Anticipates a future rebrand that drops "Greenplum Database" from this part of the
+		// banner in favor of "WarehousePG" (see review discussion on PR #8) while keeping the
+		// same surrounding shape - not yet observed in any real banner.
+		It("parses a hypothetical future rebranded banner using a (WarehousePG marker with the paren before the version, mirroring the WHPG19 shape", func() {
+			banner := "PostgreSQL 20beta1 on aarch64-unknown-linux-gnu, compiled by gcc (GCC) 12.1.0, 64-bit (WarehousePG) 20.0.0 build dev compiled on Jan 1 2027 WarehousePG"
+			versionAndTrailer, version, err := dbconn.ParseGPVersion(banner)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(version).To(Equal(semver.MustParse("20.0.0")))
+			Expect(versionAndTrailer).To(HavePrefix("20.0.0"))
+		})
+		It("parses a hypothetical future rebranded banner using a (WarehousePG marker with the paren after the version, mirroring the GP6/GP7 shape", func() {
+			banner := "PostgreSQL 15.4 (WarehousePG 20.0.0 build dev) on x86_64-pc-linux-gnu, compiled by gcc (GCC) 12.1.0, 64-bit compiled on Jan 1 2027"
+			versionAndTrailer, version, err := dbconn.ParseGPVersion(banner)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(version).To(Equal(semver.MustParse("20.0.0")))
+			Expect(versionAndTrailer).To(HavePrefix("20.0.0"))
+		})
 	})
 })

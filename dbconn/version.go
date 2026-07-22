@@ -43,6 +43,17 @@ func InitializeVersion(dbconn *DBConn) (dbversion GPDBVersion, err error) {
 	return
 }
 
+// gpDatabaseMarkers are the brand-name markers that introduce the GPDB/WarehousePG
+// version number in a "SELECT version()" banner, tried in order. "(Greenplum Database"
+// covers GP6/GP7 and WHPG19; "(WarehousePG" is included pre-emptively for the expected
+// future rebrand that drops the "Greenplum Database" name from this part of the banner
+// (per review discussion on gp-common-go-libs PR #8) - guessed to keep the same
+// surrounding format, just with the brand name swapped, e.g. "(WarehousePG) 20.0.0 ...".
+// A plain trailing " WarehousePG" brand suffix (no leading paren, present in every
+// banner already) can't collide with this marker, since the match requires the literal
+// "(WarehousePG" substring.
+var gpDatabaseMarkers = []string{"(Greenplum Database", "(WarehousePG"}
+
 // ParseGPVersion extracts the Greenplum/WarehousePG version out of a raw
 // "SELECT version()" banner. Two banner shapes are in the wild:
 //
@@ -52,10 +63,11 @@ func InitializeVersion(dbconn *DBConn) (dbversion GPDBVersion, err error) {
 //     backend moved the closing paren to right after "Database", ahead of the
 //     version number, so the version now sits *outside* those parens.
 //
-// Rather than assume where the closing paren falls, this only anchors on the
-// "(Greenplum Database" marker and takes the first X.Y.Z token after it, which
-// matches both shapes without special-casing WHPG19. If the marker or a version
-// number can't be found, an error is returned instead of panicking.
+// Rather than assume where the closing paren falls, this only anchors on the marker
+// text (see gpDatabaseMarkers) and takes the first X.Y.Z token after it, which matches
+// both shapes - and any future rebrand that keeps the same shape under a different
+// marker - without needing to special-case any of them. If no marker or no version
+// number can be found, an error is returned instead of panicking.
 //
 // It returns the matched version number plus whatever trailing text follows it
 // in the banner (e.g. "6.28.9 build ...", "19.0.0 build dev ... WarehousePG"),
@@ -66,10 +78,17 @@ func InitializeVersion(dbconn *DBConn) (dbversion GPDBVersion, err error) {
 // the original slicing logic did for GP6/GP7, avoids that code silently
 // mis-deriving the major version on WHPG19.
 func ParseGPVersion(versionString string) (versionAndTrailer string, version semver.Version, err error) {
-	const marker = "(Greenplum Database"
-	_, rest, found := strings.Cut(versionString, marker)
+	var rest string
+	found := false
+	for _, marker := range gpDatabaseMarkers {
+		if _, r, ok := strings.Cut(versionString, marker); ok {
+			rest = r
+			found = true
+			break
+		}
+	}
 	if !found {
-		err = fmt.Errorf("could not find a Greenplum Database version marker in version string: %q", versionString)
+		err = fmt.Errorf("could not find a Greenplum Database/WarehousePG version marker in version string: %q", versionString)
 		return
 	}
 
