@@ -1,4 +1,4 @@
-module github.com/greenplum-db/gp-common-go-libs
+module github.com/warehouse-pg/common-go-libs
 
 go 1.25.0
 
