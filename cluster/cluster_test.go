@@ -356,6 +356,23 @@ var _ = Describe("cluster/cluster tests", func() {
 		})
 	})
 
+	Describe("MustGetSegmentConfiguration", func() {
+		header := []string{"dbid", "contentid", "role", "preferredrole", "mode", "status", "port", "hostname", "address", "datadir"}
+		mirrorSegValue := cluster.SegConfig{2, 0, "m", "m", "s", "u", 6003, "localhost", "127.0.0.1", "/data/mirror/gpseg0"}
+		mirrorSeg := []driver.Value{mirrorSegValue.DbID, mirrorSegValue.ContentID, mirrorSegValue.Role, mirrorSegValue.PreferredRole, mirrorSegValue.Mode, mirrorSegValue.Status, mirrorSegValue.Port, mirrorSegValue.Hostname, mirrorSegValue.Address, mirrorSegValue.DataDir}
+
+		It("forwards the full two-bool mirrors-only contract to GetSegmentConfiguration", func() {
+			fakeResult := sqlmock.NewRows(header).AddRow(mirrorSeg...)
+			// The mirrors-only mode is distinguishable by its WHERE clause; a
+			// dropped second bool would degrade to the primaries-only query
+			// (s.role = 'p') and fail this expectation.
+			mock.ExpectQuery(`s\.role = 'm'`).WillReturnRows(fakeResult)
+			results := cluster.MustGetSegmentConfiguration(connection, true, true)
+			Expect(len(results)).To(Equal(1))
+			Expect(results[0]).To(Equal(mirrorSegValue))
+		})
+	})
+
 	Describe("GenerateSSHCommandList", func() {
 		coordinatorSegCmd := []string{"bash", "-c", "ls"}
 		localSegCmd := []string{"bash", "-c", "ls"}
