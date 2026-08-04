@@ -635,7 +635,7 @@ ORDER BY content, role DESC;`, whereClause)
 }
 
 func MustGetSegmentConfiguration(connection *dbconn.DBConn, getMirrors ...bool) []SegConfig {
-	segConfigs, err := GetSegmentConfiguration(connection, len(getMirrors) == 1 && getMirrors[0])
+	segConfigs, err := GetSegmentConfiguration(connection, getMirrors...)
 	gplog.FatalOnError(err)
 	return segConfigs
 }
