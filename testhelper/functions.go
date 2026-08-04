@@ -1,13 +1,13 @@
 package testhelper
 
 import (
+	"database/sql"
 	"fmt"
 	"os"
 	"regexp"
 	"strings"
 
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
-	"github.com/jmoiron/sqlx"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gbytes"
 	"github.com/warehouse-pg/common-go-libs/dbconn"
@@ -35,12 +35,11 @@ func SetupTestEnvironment() (*dbconn.DBConn, sqlmock.Sqlmock, *gbytes.Buffer, *g
 	return connection, mock, testStdout, testStderr, testLogfile
 }
 
-func CreateMockDB() (*sqlx.DB, sqlmock.Sqlmock) {
+func CreateMockDB() (*sql.DB, sqlmock.Sqlmock) {
 	db, mock, err := sqlmock.New()
-	mockdb := sqlx.NewDb(db, "sqlmock")
-	Expect(err).To(BeNil(), "Could not create mock database connection")
 
-	return mockdb, mock
+	Expect(err).To(BeNil(), "Could not create mock database connection")
+	return db, mock
 }
 
 /*
@@ -105,7 +104,13 @@ func AssertQueryRuns(connection *dbconn.DBConn, query string) {
  */
 func MockFileContents(contents string) {
 	r, w, _ := os.Pipe()
-	operating.System.OpenFileRead = func(name string, flag int, perm os.FileMode) (operating.ReadCloserAt, error) { return r, nil }
-	_, _ = w.Write([]byte(contents))
-	_ = w.Close()
+	operating.System.OpenFileRead = func(name string, flag int, perm os.FileMode) (operating.ReadCloserAt, error) {
+		return r, nil
+	}
+	// Write from a goroutine: contents larger than the pipe buffer would
+	// otherwise block here, before any reader exists.
+	go func() {
+		_, _ = w.Write([]byte(contents))
+		_ = w.Close()
+	}()
 }

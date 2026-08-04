@@ -19,7 +19,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pkg/errors"
 	"github.com/warehouse-pg/common-go-libs/dbconn"
 	"github.com/warehouse-pg/common-go-libs/gplog"
 	"github.com/warehouse-pg/common-go-libs/operating"
@@ -55,16 +54,16 @@ type Cluster struct {
 }
 
 type SegConfig struct {
-	DbID          int
-	ContentID     int
-	Role          string
-	PreferredRole string
-	Mode          string
-	Status        string
-	Port          int
-	Hostname      string
-	Address       string
-	DataDir       string
+	DbID          int    `db:"dbid"`
+	ContentID     int    `db:"contentid"`
+	Role          string `db:"role"`
+	PreferredRole string `db:"preferredrole"`
+	Mode          string `db:"mode"`
+	Status        string `db:"status"`
+	Port          int    `db:"port"`
+	Hostname      string `db:"hostname"`
+	Address       string `db:"address"`
+	DataDir       string `db:"datadir"`
 }
 
 /*
@@ -475,7 +474,7 @@ func LogFatalClusterError(errMessage string, scope Scope, numErrors int) {
 	if numErrors != 1 {
 		segMsg += "s"
 	}
-	gplog.Fatal(errors.Errorf("%s %d %s. See %s for a complete list of errors.", errMessage, numErrors, segMsg, gplog.GetLogFilePath()), "")
+	gplog.Fatal(fmt.Errorf("%s %d %s. See %s for a complete list of errors.", errMessage, numErrors, segMsg, gplog.GetLogFilePath()), "")
 }
 
 /*

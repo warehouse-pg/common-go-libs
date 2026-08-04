@@ -7,7 +7,6 @@ package operating
 
 import (
 	"io"
-	"io/ioutil"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -93,13 +92,13 @@ func InitializeSystemFunctions() *SystemFunctions {
 		Now:           time.Now,
 		OpenFileRead:  OpenFileRead,
 		OpenFileWrite: OpenFileWrite,
-		ReadFile:      ioutil.ReadFile,
+		ReadFile:      os.ReadFile,
 		Remove:        os.Remove,
 		RemoveAll:     os.RemoveAll,
 		Stat:          os.Stat,
 		Stdin:         os.Stdin,
 		Stdout:        os.Stdout,
-		TempFile:      ioutil.TempFile,
+		TempFile:      os.CreateTemp,
 		Local:         time.Local,
 	}
 }

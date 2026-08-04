@@ -6,9 +6,9 @@ package testhelper
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
-	"github.com/jmoiron/sqlx"
 	"github.com/warehouse-pg/common-go-libs/cluster"
 	"github.com/warehouse-pg/common-go-libs/gplog"
 )
@@ -16,13 +16,13 @@ import (
 type TestDriver struct {
 	ErrToReturn  error
 	ErrsToReturn []error
-	DB           *sqlx.DB
+	DB           *sql.DB
 	DBName       string
 	User         string
 	CallNumber   int
 }
 
-func (driver *TestDriver) Connect(driverName string, dataSourceName string) (*sqlx.DB, error) {
+func (driver *TestDriver) Connect(driverName string, dataSourceName string) (*sql.DB, error) {
 	if driver.ErrsToReturn != nil && driver.CallNumber < len(driver.ErrsToReturn) {
 		// Return the errors in the order specified until we run out of specified errors, then return normally
 		err := driver.ErrsToReturn[driver.CallNumber]

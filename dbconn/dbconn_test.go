@@ -2,6 +2,7 @@ package dbconn_test
 
 import (
 	"context"
+	"database/sql"
 	"database/sql/driver"
 	"fmt"
 	"os"
@@ -9,7 +10,7 @@ import (
 	"time"
 
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
-	"github.com/jmoiron/sqlx"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/warehouse-pg/common-go-libs/dbconn"
 	"github.com/warehouse-pg/common-go-libs/operating"
 	"github.com/warehouse-pg/common-go-libs/testhelper"
@@ -24,9 +25,7 @@ var (
 )
 
 func ExpectBegin(mock sqlmock.Sqlmock) {
-	fakeResult := testhelper.TestResult{Rows: 0}
 	mock.ExpectBegin()
-	mock.ExpectExec("SET TRANSACTION(.*)").WillReturnResult(fakeResult)
 }
 
 func TestDBConn(t *testing.T) {
@@ -78,7 +77,7 @@ var _ = Describe("dbconn/dbconn tests", func() {
 		})
 	})
 	Describe("DBConn.MustConnect", func() {
-		var mockdb *sqlx.DB
+		var mockdb *sql.DB
 		BeforeEach(func() {
 			connection, mock = testhelper.CreateMockDBConn()
 			testhelper.ExpectVersionQuery(mock, "5.1.0")
@@ -98,7 +97,7 @@ var _ = Describe("dbconn/dbconn tests", func() {
 			Expect(len(connection.Tx)).To(Equal(3))
 		})
 		It("does not connect if the database exists but the connection is refused", func() {
-			connection.Driver = &testhelper.TestDriver{ErrToReturn: fmt.Errorf("pq: connection refused"), DB: mockdb, User: "testrole"}
+			connection.Driver = &testhelper.TestDriver{ErrToReturn: fmt.Errorf("dial tcp 127.0.0.1:5432: connect: connection refused"), DB: mockdb, User: "testrole"}
 			defer testhelper.ShouldPanicWithMessage(`could not connect to server: Connection refused`)
 			connection.MustConnect(1)
 		})
@@ -107,7 +106,7 @@ var _ = Describe("dbconn/dbconn tests", func() {
 			connection.MustConnect(0)
 		})
 		It("fails if the database does not exist", func() {
-			connection.Driver = &testhelper.TestDriver{ErrToReturn: fmt.Errorf("pq: database \"testdb\" does not exist"), DB: mockdb, DBName: "testdb", User: "testrole"}
+			connection.Driver = &testhelper.TestDriver{ErrToReturn: &pgconn.PgError{Code: "3D000", Message: `database "testdb" does not exist`}, DB: mockdb, DBName: "testdb", User: "testrole"}
 			Expect(connection.DBName).To(Equal("testdb"))
 			defer testhelper.ShouldPanicWithMessage("Database \"testdb\" does not exist on testhost:5432, exiting")
 			connection.MustConnect(1)
@@ -118,7 +117,7 @@ var _ = Describe("dbconn/dbconn tests", func() {
 			defer os.Setenv("PGUSER", oldPgUser)
 
 			connection = dbconn.NewDBConnFromEnvironment("testdb")
-			connection.Driver = &testhelper.TestDriver{ErrToReturn: fmt.Errorf("pq: role \"nonexistent\" does not exist"), DB: mockdb, DBName: "testdb", User: "nonexistent"}
+			connection.Driver = &testhelper.TestDriver{ErrToReturn: &pgconn.PgError{Code: "42704", Message: `role "nonexistent" does not exist`}, DB: mockdb, DBName: "testdb", User: "nonexistent"}
 			Expect(connection.User).To(Equal("nonexistent"))
 			expectedStr := fmt.Sprintf("Role \"nonexistent\" does not exist on %s:%d, exiting", connection.Host, connection.Port)
 			defer testhelper.ShouldPanicWithMessage(expectedStr)
@@ -126,22 +125,44 @@ var _ = Describe("dbconn/dbconn tests", func() {
 		})
 	})
 	Describe("DBConn.Connect", func() {
-		It("can connect to GPDB 6 and earlier in utility mode", func() {
+		It("can connect in utility mode where gp_session_role is accepted", func() {
+			// The leading nil makes TestDriver return (nil, nil) for the probe
+			// call. That matters because TestDriver hands out one shared
+			// *sql.DB and the probe closes whatever it is given; in production
+			// each Driver.Connect call returns a distinct handle.
 			connection, mock = testhelper.CreateMockDBConn(nil)
 			testhelper.ExpectVersionQuery(mock, "6.0.0")
 
 			err := connection.Connect(1, true)
 			Expect(err).ToNot(HaveOccurred())
 		})
-		It("can connect to GPDB 7 and later in utility mode", func() {
-			connection, mock = testhelper.CreateMockDBConn(fmt.Errorf(`pq: unrecognized configuration parameter "gp_session_role"`))
+		It("falls back to gp_role where gp_session_role no longer exists", func() {
+			connection, mock = testhelper.CreateMockDBConn(fmt.Errorf(`ERROR: unrecognized configuration parameter "gp_session_role" (SQLSTATE 42704)`))
 			testhelper.ExpectVersionQuery(mock, "7.0.0")
 
 			err := connection.Connect(1, true)
 			Expect(err).ToNot(HaveOccurred())
 		})
+		It("does not misreport an unrecognized-parameter error as a missing role", func() {
+			// The message `unrecognized configuration parameter
+			// "gp_session_role"` contains both "role" and "gp" as substrings,
+			// so a user named gp must not be diagnosed as a nonexistent role.
+			connection, _ = testhelper.CreateMockDBConn(&pgconn.PgError{
+				Code:    "42704",
+				Message: `unrecognized configuration parameter "gp_session_role"`,
+			})
+			connection.User = "gp"
+
+			err := connection.Connect(1)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).ToNot(ContainSubstring("does not exist"))
+			Expect(err.Error()).To(ContainSubstring("unrecognized configuration parameter"))
+		})
 		It("passes an error message on if a utility mode connection fails", func() {
-			connection, mock = testhelper.CreateMockDBConn(fmt.Errorf(`pq: database \"testdb\" does not exist`))
+			connection, mock = testhelper.CreateMockDBConn(&pgconn.PgError{
+				Code:    "3D000",
+				Message: `database "testdb" does not exist`,
+			})
 			testhelper.ExpectVersionQuery(mock, "6.0.0")
 
 			Expect(connection.DBName).To(Equal("testdb"))
@@ -291,6 +312,31 @@ var _ = Describe("dbconn/dbconn tests", func() {
 			Expect(testRecord.Schemaname).To(Equal("schema1"))
 			Expect(testRecord.Tablename).To(Equal("table1"))
 		})
+		It("returns ErrMultipleRows when the query returns more than one row", func() {
+			two_col_rows := sqlmock.NewRows([]string{"schemaname", "tablename"}).
+				AddRow("schema1", "table1").
+				AddRow("schema2", "table2")
+			mock.ExpectQuery("SELECT (.*)").WillReturnRows(two_col_rows)
+
+			testRecord := struct {
+				Schemaname string
+				Tablename  string
+			}{}
+
+			err := connection.Get(&testRecord, "SELECT schemaname, tablename FROM two_columns")
+			Expect(err).To(MatchError(dbconn.ErrMultipleRows))
+		})
+		It("returns sql.ErrNoRows when the query returns no rows", func() {
+			mock.ExpectQuery("SELECT (.*)").WillReturnRows(sqlmock.NewRows([]string{"schemaname", "tablename"}))
+
+			testRecord := struct {
+				Schemaname string
+				Tablename  string
+			}{}
+
+			err := connection.Get(&testRecord, "SELECT schemaname, tablename FROM two_columns")
+			Expect(err).To(MatchError(sql.ErrNoRows))
+		})
 	})
 	Describe("DBConn.Select", func() {
 		It("executes a SELECT outside of a transaction", func() {
@@ -427,7 +473,7 @@ var _ = Describe("dbconn/dbconn tests", func() {
 			var result []testSlice
 			for rows.Next() {
 				var row testSlice
-				rows.StructScan(&row)
+				Expect(rows.Scan(&row.Schemaname, &row.Tablename)).To(Succeed())
 				result = append(result, row)
 			}
 
@@ -480,6 +526,100 @@ var _ = Describe("dbconn/dbconn tests", func() {
 			connection.MustCommit()
 		})
 	})
+	Describe("DBConn.Rollback", func() {
+		It("successfully executes a ROLLBACK in a transaction", func() {
+			ExpectBegin(mock)
+			mock.ExpectRollback()
+			connection.MustBegin()
+			err := connection.Rollback()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(connection.Tx[0]).To(BeNil())
+		})
+		It("returns an error if it executes a ROLLBACK outside a transaction", func() {
+			err := connection.Rollback()
+			Expect(err).To(MatchError("Cannot rollback transaction; there is no transaction in progress"))
+		})
+		It("panics via MustRollback outside a transaction", func() {
+			defer testhelper.ShouldPanicWithMessage("Cannot rollback transaction; there is no transaction in progress")
+			connection.MustRollback()
+		})
+	})
+	Describe("DBConn.Query", func() {
+		// Query returns *sql.Rows rather than sqlx's *sqlx.Rows; the caller owns
+		// closing them.
+		It("returns rows the caller scans directly", func() {
+			two_col_rows := sqlmock.NewRows([]string{"schemaname", "tablename"}).
+				AddRow("schema1", "table1").
+				AddRow("schema2", "table2")
+			mock.ExpectQuery("SELECT (.*)").WillReturnRows(two_col_rows)
+
+			rows, err := connection.Query("SELECT schemaname, tablename FROM two_columns")
+			Expect(err).ToNot(HaveOccurred())
+			defer rows.Close()
+
+			var schemas []string
+			for rows.Next() {
+				var schema, table string
+				Expect(rows.Scan(&schema, &table)).To(Succeed())
+				schemas = append(schemas, schema)
+			}
+			Expect(rows.Err()).ToNot(HaveOccurred())
+			Expect(schemas).To(Equal([]string{"schema1", "schema2"}))
+		})
+		It("passes arguments through with QueryWithArgs", func() {
+			one_col_row := sqlmock.NewRows([]string{"tablename"}).AddRow("table1")
+			mock.ExpectQuery("SELECT (.*)").WithArgs("table1").WillReturnRows(one_col_row)
+
+			rows, err := connection.QueryWithArgs("SELECT tablename FROM two_columns WHERE tablename=$1", "table1")
+			Expect(err).ToNot(HaveOccurred())
+			defer rows.Close()
+
+			Expect(rows.Next()).To(BeTrue())
+			var table string
+			Expect(rows.Scan(&table)).To(Succeed())
+			Expect(table).To(Equal("table1"))
+		})
+	})
+	Describe("DBConn.ConnectInUtilityMode", func() {
+		It("connects with gp_role on the first probe", func() {
+			// The leading nil makes TestDriver return (nil, nil) for the probe
+			// call. That matters because TestDriver hands out one shared
+			// *sql.DB, and the probe closes whatever it is given - in
+			// production each Driver.Connect call returns a distinct handle.
+			connection, mock = testhelper.CreateMockDBConn(nil)
+			testhelper.ExpectVersionQuery(mock, "7.0.0")
+
+			err := connection.ConnectInUtilityMode(1)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(connection.NumConns).To(Equal(1))
+		})
+		It("panics via MustConnectInUtilityMode when the connection fails", func() {
+			connection, mock = testhelper.CreateMockDBConn(&pgconn.PgError{
+				Code:    "3D000",
+				Message: `database "testdb" does not exist`,
+			})
+			testhelper.ExpectVersionQuery(mock, "7.0.0")
+
+			defer testhelper.ShouldPanicWithMessage(`Database "testdb" does not exist on testhost:5432, exiting`)
+			connection.MustConnectInUtilityMode(1)
+		})
+	})
+	Describe("GPDBDriver.Connect", func() {
+		// sql.Open is lazy, so the real driver pings to make a bad connection
+		// surface here rather than on the first query.
+		It("returns an error rather than a handle when the server is unreachable", func() {
+			driver := &dbconn.GPDBDriver{}
+			db, err := driver.Connect("pgx", "host=127.0.0.1 port=1 dbname=nonexistent connect_timeout=1 sslmode=disable")
+			Expect(err).To(HaveOccurred())
+			Expect(db).To(BeNil())
+		})
+		It("returns an error for an unregistered driver name", func() {
+			driver := &dbconn.GPDBDriver{}
+			db, err := driver.Connect("no-such-driver", "")
+			Expect(err).To(HaveOccurred())
+			Expect(db).To(BeNil())
+		})
+	})
 	Describe("Dbconn.ValidateConnNum", func() {
 		BeforeEach(func() {
 			connection, mock = testhelper.CreateMockDBConn()
@@ -529,7 +669,7 @@ var _ = Describe("dbconn/dbconn tests", func() {
 		It("panics if the query selects multiple rows", func() {
 			fakeResult := sqlmock.NewRows(header).AddRow(rowOne...).AddRow(rowTwo...)
 			mock.ExpectQuery("SELECT (.*)").WillReturnRows(fakeResult)
-			defer testhelper.ShouldPanicWithMessage("Too many rows returned from query: got 2 rows, expected 1 row")
+			defer testhelper.ShouldPanicWithMessage("Too many rows returned from query: expected at most 1 row")
 			dbconn.MustSelectString(connection, "SELECT foo FROM bar")
 		})
 		It("panics if the query selects multiple columns", func() {
@@ -596,7 +736,7 @@ var _ = Describe("dbconn/dbconn tests", func() {
 		It("panics if the query selects multiple rows", func() {
 			fakeResult := sqlmock.NewRows(header).AddRow(rowOne...).AddRow(rowTwo...)
 			mock.ExpectQuery("SELECT (.*)").WillReturnRows(fakeResult)
-			defer testhelper.ShouldPanicWithMessage("Too many rows returned from query: got 2 rows, expected 1 row")
+			defer testhelper.ShouldPanicWithMessage("Too many rows returned from query: expected at most 1 row")
 			dbconn.MustSelectInt(connection, "SELECT foo FROM bar")
 		})
 		It("panics if the query selects multiple columns", func() {

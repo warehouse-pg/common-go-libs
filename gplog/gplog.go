@@ -10,10 +10,10 @@ import (
 	"log"
 	"os"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 
-	"github.com/pkg/errors"
 	"github.com/warehouse-pg/common-go-libs/operating"
 )
 
@@ -384,6 +384,9 @@ func Error(s string, v ...interface{}) {
 }
 
 func Fatal(err error, s string, v ...interface{}) {
+	// Capture the stack before taking the mutex so the recorded frames are the
+	// caller's, not whatever is blocked on the lock.
+	stack := captureStack()
 	logMutex.Lock()
 	defer logMutex.Unlock()
 	errorCode = 2
@@ -391,7 +394,7 @@ func Fatal(err error, s string, v ...interface{}) {
 	stackTraceStr := ""
 	if err != nil {
 		message += fmt.Sprintf("%v", err)
-		stackTraceStr = formatStackTrace(errors.WithStack(err))
+		stackTraceStr = formatStackTrace(stack)
 		if s != "" {
 			message += ": "
 		}
@@ -451,14 +454,28 @@ func FatalWithoutPanic(s string, v ...interface{}) {
 	exitFunc()
 }
 
-type stackTracer interface {
-	StackTrace() errors.StackTrace
+func captureStack() []uintptr {
+	var pcs [32]uintptr
+	// Skip runtime.Callers, captureStack itself, and the gplog.Fatal frame
+	// where captureStack runs - the trace should start at Fatal's caller.
+	n := runtime.Callers(3, pcs[:])
+	return pcs[:n]
 }
 
-func formatStackTrace(err error) string {
-	st := err.(stackTracer).StackTrace()
-	message := fmt.Sprintf("%+v", st[1:])
-	return message
+func formatStackTrace(pcs []uintptr) string {
+	var b strings.Builder
+	frames := runtime.CallersFrames(pcs)
+	for {
+		f, more := frames.Next()
+		if f.Function == "" {
+			break
+		}
+		fmt.Fprintf(&b, "\n%s\n\t%s:%d", f.Function, f.File, f.Line)
+		if !more {
+			break
+		}
+	}
+	return b.String()
 }
 
 /*
@@ -494,13 +511,13 @@ func createLogDirectory(dirname string) {
 		if operating.System.IsNotExist(err) {
 			err = operating.System.MkdirAll(dirname, 0755)
 			if err != nil {
-				abort(errors.Errorf("Cannot create log directory %s: %v", dirname, err))
+				abort(fmt.Errorf("Cannot create log directory %s: %v", dirname, err))
 			}
 		} else {
-			abort(errors.Errorf("Cannot stat log directory %s: %v", dirname, err))
+			abort(fmt.Errorf("Cannot stat log directory %s: %v", dirname, err))
 		}
 	} else if !(info.IsDir()) {
-		abort(errors.Errorf("%s is a file, not a directory", dirname))
+		abort(fmt.Errorf("%s is a file, not a directory", dirname))
 	}
 }
 

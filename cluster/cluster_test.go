@@ -3,7 +3,7 @@ package cluster_test
 import (
 	"context"
 	"database/sql/driver"
-	joinerrs "errors"
+	"errors"
 	"fmt"
 	"os"
 	"os/user"
@@ -13,7 +13,6 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/onsi/gomega/gbytes"
-	"github.com/pkg/errors"
 	"github.com/warehouse-pg/common-go-libs/cluster"
 	"github.com/warehouse-pg/common-go-libs/dbconn"
 	"github.com/warehouse-pg/common-go-libs/operating"
@@ -672,7 +671,7 @@ fi`
 				generatorFunc interface{}
 			)
 			BeforeEach(func() {
-				retryErr := joinerrs.Join(errors.New("attempt 1: this is an error"), errors.New("attempt 2: this is an error"))
+				retryErr := errors.Join(errors.New("attempt 1: this is an error"), errors.New("attempt 2: this is an error"))
 				retriedCmd = cluster.ShellCommand{
 					Scope:         0,
 					Content:       1,
@@ -776,7 +775,7 @@ fi`
 	})
 	Describe("NewRemoteOutput", func() {
 		var (
-			retryErr   = joinerrs.Join(errors.New("attempt 1: this is an error"), errors.New("attempt 2: this is an error"))
+			retryErr   = errors.Join(errors.New("attempt 1: this is an error"), errors.New("attempt 2: this is an error"))
 			retriedCmd = cluster.ShellCommand{
 				Scope:         0,
 				Content:       1,
