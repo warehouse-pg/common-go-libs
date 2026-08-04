@@ -9,7 +9,7 @@ import (
 )
 
 type GPDBVersion struct {
-	VersionString string
+	VersionString string `db:"versionstring"`
 	SemVer        semver.Version
 }
 
@@ -27,11 +27,10 @@ var versionNumPattern = regexp.MustCompile(`\d+\.\d+\.\d+`)
  * and the function will panic.
  */
 func NewVersion(versionStr string) GPDBVersion {
-	version := GPDBVersion{
+	return GPDBVersion{
 		VersionString: versionStr,
 		SemVer:        semver.MustParse(versionStr),
 	}
-	return version
 }
 
 func InitializeVersion(dbconn *DBConn) (dbversion GPDBVersion, err error) {
@@ -108,21 +107,17 @@ func StringToSemVerRange(versionStr string) semver.Range {
 	if numDigits < 3 {
 		versionStr += ".x"
 	}
-	validRange := semver.MustParseRange(versionStr)
-	return validRange
+	return semver.MustParseRange(versionStr)
 }
 
 func (dbversion GPDBVersion) Before(targetVersion string) bool {
-	validRange := StringToSemVerRange("<" + targetVersion)
-	return validRange(dbversion.SemVer)
+	return StringToSemVerRange("<" + targetVersion)(dbversion.SemVer)
 }
 
 func (dbversion GPDBVersion) AtLeast(targetVersion string) bool {
-	validRange := StringToSemVerRange(">=" + targetVersion)
-	return validRange(dbversion.SemVer)
+	return StringToSemVerRange(">=" + targetVersion)(dbversion.SemVer)
 }
 
 func (dbversion GPDBVersion) Is(targetVersion string) bool {
-	validRange := StringToSemVerRange("==" + targetVersion)
-	return validRange(dbversion.SemVer)
+	return StringToSemVerRange("==" + targetVersion)(dbversion.SemVer)
 }

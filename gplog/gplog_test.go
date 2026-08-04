@@ -1,6 +1,7 @@
 package gplog_test
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -12,7 +13,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gbytes"
-	"github.com/pkg/errors"
 	"github.com/warehouse-pg/common-go-libs/gplog"
 	"github.com/warehouse-pg/common-go-libs/operating"
 	"github.com/warehouse-pg/common-go-libs/testhelper"
@@ -210,6 +210,49 @@ var _ = Describe("logger/log tests", func() {
 			It("Logs fatally on error with output", func() {
 				defer testhelper.ShouldPanicWithMessage("this is an error: this is output")
 				gplog.FatalOnError(errors.New("this is an error"), "this is output")
+			})
+		})
+		/*
+		 * The stack trace used to come from pkg/errors; it is now captured with
+		 * runtime.Callers in gplog itself, so these pin the parts of that
+		 * behavior a wrong skip count or format would break.
+		 */
+		Describe("Fatal stack traces", func() {
+			It("records a stack trace alongside the message in the log file", func() {
+				func() {
+					defer func() {
+						_ = recover()
+						Expect(string(logfile.Contents())).To(ContainSubstring(fatalExpected + "this is an error"))
+						// One frame is "\n<function>\n\t<file>:<line>".
+						Expect(string(logfile.Contents())).To(MatchRegexp(`\n\S+\n\t\S+\.go:\d+`))
+					}()
+					gplog.Fatal(errors.New("this is an error"), "")
+				}()
+			})
+			It("starts the trace at Fatal's caller rather than at Fatal itself", func() {
+				func() {
+					defer func() {
+						_ = recover()
+						contents := string(logfile.Contents())
+						_, stackTrace, found := strings.Cut(contents, "this is an error")
+						Expect(found).To(BeTrue())
+						frames := strings.Split(strings.TrimPrefix(stackTrace, "\n"), "\n")
+						Expect(frames[0]).To(ContainSubstring("gplog_test"))
+						Expect(stackTrace).ToNot(ContainSubstring("gplog.Fatal\n"))
+						Expect(stackTrace).ToNot(ContainSubstring("captureStack"))
+					}()
+					gplog.Fatal(errors.New("this is an error"), "")
+				}()
+			})
+			It("logs only the message when the error is nil", func() {
+				func() {
+					defer func() {
+						_ = recover()
+						Expect(string(logfile.Contents())).To(ContainSubstring(fatalExpected + "just a message"))
+						Expect(string(logfile.Contents())).ToNot(MatchRegexp(`\n\S+\n\t\S+\.go:\d+`))
+					}()
+					gplog.Fatal(nil, "just a message")
+				}()
 			})
 		})
 		Describe("Shell verbosity set to Error", func() {

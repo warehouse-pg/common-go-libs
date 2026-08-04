@@ -8,10 +8,10 @@ package iohelper
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 	"os"
 
-	"github.com/pkg/errors"
 	"github.com/warehouse-pg/common-go-libs/gplog"
 	"github.com/warehouse-pg/common-go-libs/operating"
 )
@@ -31,7 +31,7 @@ import (
 func OpenFileForReading(filename string) (operating.ReadCloserAt, error) {
 	fileHandle, err := operating.System.OpenFileRead(filename, os.O_RDONLY, 0644)
 	if err != nil {
-		return nil, errors.Errorf("Unable to open file for reading: %s", err)
+		return nil, fmt.Errorf("Unable to open file for reading: %s", err)
 	}
 	return fileHandle, nil
 }
@@ -46,7 +46,7 @@ func OpenFileForWriting(filename string) (io.WriteCloser, error) {
 	flags := os.O_CREATE | os.O_WRONLY | os.O_TRUNC
 	fileHandle, err := operating.System.OpenFileWrite(filename, flags, 0644)
 	if err != nil {
-		return nil, errors.Errorf("Unable to create or open file for writing: %s", err)
+		return nil, fmt.Errorf("Unable to create or open file for writing: %s", err)
 	}
 	return fileHandle, nil
 }
@@ -61,7 +61,7 @@ func OpenFileForAppending(filename string) (io.WriteCloser, error) {
 	flags := os.O_APPEND | os.O_CREATE | os.O_WRONLY
 	fileHandle, err := operating.System.OpenFileWrite(filename, flags, 0644)
 	if err != nil {
-		return nil, errors.Errorf("Unable to create or open file for appending: %s", err)
+		return nil, fmt.Errorf("Unable to create or open file for appending: %s", err)
 	}
 	return fileHandle, nil
 }
