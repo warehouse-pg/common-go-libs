@@ -9,10 +9,10 @@ import (
 	"time"
 
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
-	"github.com/greenplum-db/gp-common-go-libs/dbconn"
-	"github.com/greenplum-db/gp-common-go-libs/operating"
-	"github.com/greenplum-db/gp-common-go-libs/testhelper"
 	"github.com/jmoiron/sqlx"
+	"github.com/warehouse-pg/common-go-libs/dbconn"
+	"github.com/warehouse-pg/common-go-libs/operating"
+	"github.com/warehouse-pg/common-go-libs/testhelper"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"

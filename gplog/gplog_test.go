@@ -9,13 +9,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/greenplum-db/gp-common-go-libs/gplog"
-	"github.com/greenplum-db/gp-common-go-libs/operating"
-	"github.com/greenplum-db/gp-common-go-libs/testhelper"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gbytes"
 	"github.com/pkg/errors"
+	"github.com/warehouse-pg/common-go-libs/gplog"
+	"github.com/warehouse-pg/common-go-libs/operating"
+	"github.com/warehouse-pg/common-go-libs/testhelper"
 )
 
 func TestGpLog(t *testing.T) {

@@ -6,9 +6,9 @@ package testhelper
 
 import (
 	"context"
-	"github.com/greenplum-db/gp-common-go-libs/cluster"
-	"github.com/greenplum-db/gp-common-go-libs/gplog"
 	"github.com/jmoiron/sqlx"
+	"github.com/warehouse-pg/common-go-libs/cluster"
+	"github.com/warehouse-pg/common-go-libs/gplog"
 	"time"
 )
 
