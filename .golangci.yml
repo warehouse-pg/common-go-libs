@@ -1,29 +1,38 @@
+version: "2"
 linters:
-  # please, do not use `enable-all`: it's deprecated and will be removed soon.
-  # inverted configuration with `enable-all` and `disable` is not scalable during updates of golangci-lint
-  disable-all: true
+  # Inverted configuration (`default: all` plus `disable`) does not scale well
+  # across golangci-lint upgrades, so enable what we want explicitly.
+  default: none
+  # staticcheck is deliberately not enabled yet: it flags a few hundred
+  # pre-existing findings across conv/ and the test suites, which belongs in its
+  # own cleanup rather than in the rename.
   enable:
-    - golint
-    - vet
-    - varcheck
-    - unparam
     - errcheck
-
-issues:
-  # List of regexps of issue texts to exclude, empty list by default.
-  # But independently from this option we use default exclude patterns,
-  # it can be disabled by `exclude-use-default: false`. To list all
-  # excluded by default patterns execute `golangci-lint run --help`
-  exclude:
-    - "don't use ALL_CAPS in Go names; use CamelCase"
-    - "should not use dot imports"
-
-  exclude-rules:
-    - path: _test\.go
-      text: "don't use underscores in Go names"
-      linters:
-        - golint
-
-    - path: _test\.go
-      linters:
-        - errcheck
+    - govet
+    - unparam
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      # Test code asserts through gomega rather than returned errors.
+      - linters:
+          - errcheck
+        path: _test\.go
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

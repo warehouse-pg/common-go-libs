@@ -1,0 +1,42 @@
+---
+name: test
+
+# The previous workflow triggered on `master`, a branch this repo does not have,
+# so it never ran on any pull request.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          # Track the go directive rather than a hardcoded version, so a bump in
+          # go.mod cannot silently leave CI behind.
+          go-version-file: go.mod
+
+      - name: build
+        run: go build ./...
+
+      - name: vet
+        run: go vet ./...
+
+      - name: lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          # Pinned to the version the .golangci.yml config was validated against.
+          version: v2.11.4
+
+      - name: unit tests
+        run: make unit
+
+      - name: verify go.mod and go.sum are tidy
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
